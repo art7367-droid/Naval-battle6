@@ -334,20 +334,21 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     const hexWidth = 21;
     const hexHeight = 25;
     const hexSpacingX = hexWidth;
+    const hexSpacingY = hexHeight * 0.75; // 18.75px - расстояние между центрами рядов
     const hexOffsetY = 6; // Смещение начала отсчёта вниз на 6 пикселей
     
     // Вычисляем ряд (вертикальная координата) с учётом смещения
-    // Используем полную высоту гекса (25px), а не расстояние между центрами (18.75px)
-    // Это правильно определяет границы рядов с учётом перекрытия гексов
+    // Используем расстояние между центрами рядов (18.75px), а не полную высоту гекса (25px)
+    // Границы между рядами проходят через каждые 18.75px
     const adjustedMapY = mapY - hexOffsetY;
-    const row = Math.floor(adjustedMapY / hexHeight);
+    const row = Math.floor(adjustedMapY / hexSpacingY);
     
     // Вычисляем колонку с учётом смещения нечётных рядов
     const offsetX = (row % 2) * (hexSpacingX / 2);
     const col = Math.floor((mapX - offsetX) / hexSpacingX);
     
     // Проверяем границы карты
-    const maxRow = Math.ceil((MAP_HEIGHT - hexOffsetY) / hexHeight);
+    const maxRow = Math.ceil((MAP_HEIGHT - hexOffsetY) / hexSpacingY);
     const maxCol = Math.ceil(MAP_WIDTH / hexSpacingX);
     
     if (row >= 0 && row < maxRow && col >= 0 && col < maxCol) {
