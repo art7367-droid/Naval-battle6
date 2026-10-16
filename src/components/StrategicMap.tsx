@@ -36,6 +36,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
   });
   
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
+  const [cursorHex, setCursorHex] = useState<{ row: number; col: number } | null>(null);
 
   // Ref-ы для отслеживания перетаскивания (не вызывают ре-рендер)
   const isPanningRef = useRef(false);
@@ -318,16 +319,51 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     return closest;
   };
   
-  // === Обработчики мыши ===
+  // === Вычисление координат гекса ===
   
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return; // только ЛКМ
-    isPanningRef.current = true;
-    hasMovedRef.current = false;
-    panStartRef.current = { x: e.clientX, y: e.clientY };
+  const getHexAtPosition = (screenX: number, screenY: number): { row: number; col: number } | null => {
+    const v = viewportRef.current;
+    
+    // Конвертируем экранные координаты в мировые
+    const mapX = v.x / v.zoom + screenX / v.zoom;
+    const mapY = v.y / v.zoom + screenY / v.zoom;
+    
+    // Параметры гексов (должны совпадать с отрисовкой)
+    const hexWidth = 21;
+    const hexHeight = 25;
+    const hexSpacingX = hexWidth;
+    const hexSpacingY = hexHeight * 0.75;
+    
+    // Вычисляем ряд (вертикальная координата)
+    const row = Math.floor(mapY / hexSpacingY);
+    
+    // Вычисляем колонку с учётом смещения нечётных рядов
+    const offsetX = (row % 2) * (hexSpacingX / 2);
+    const col = Math.floor((mapX - offsetX) / hexSpacingX);
+    
+    // Проверяем границы карты
+    const maxRow = Math.ceil(MAP_HEIGHT / hexSpacingY);
+    const maxCol = Math.ceil(MAP_WIDTH / hexSpacingX);
+    
+    if (row >= 0 && row < maxRow && col >= 0 && col < maxCol) {
+      return { row, col };
+    }
+    
+    return null;
   };
   
+  // === Обработчики мыши ===
+  
   const handleMouseMove = (e: React.MouseEvent) => {
+    // Обновляем координаты гекса под курсором
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const hex = getHexAtPosition(screenX, screenY);
+      setCursorHex(hex);
+    }
+    
     if (!isPanningRef.current) return;
     
     const dx = e.clientX - panStartRef.current.x;
@@ -345,6 +381,13 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       }));
       panStartRef.current = { x: e.clientX, y: e.clientY };
     }
+  };
+  
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // только ЛКМ
+    isPanningRef.current = true;
+    hasMovedRef.current = false;
+    panStartRef.current = { x: e.clientX, y: e.clientY };
   };
   
   const handleMouseUp = (e: React.MouseEvent) => {
@@ -370,6 +413,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
   const handleMouseLeave = () => {
     isPanningRef.current = false;
     hasMovedRef.current = false;
+    setCursorHex(null);
   };
   
   // Масштабирование колесом
@@ -393,7 +437,15 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       {/* Верхняя панель */}
       <div className="bg-slate-800 p-4 flex justify-between items-center border-b border-slate-700">
         <button onClick={onBack} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">← Назад в меню</button>
-        <h1 className="text-2xl font-bold text-cyan-300">🗺️ Стратегическая карта Тихого океана</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-cyan-300">🗺️ Стратегическая карта</h1>
+          {cursorHex && (
+            <div className="px-3 py-1 bg-slate-900/50 border border-cyan-600 rounded text-sm font-mono">
+              <span className="text-slate-400">Гекс: </span>
+              <span className="text-cyan-300 font-bold">{cursorHex.row},{cursorHex.col}</span>
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-4">
           <div className="text-sm text-slate-400">Масштаб: {Math.round(viewport.zoom * 100)}%</div>
           <div className="flex items-center gap-2">
