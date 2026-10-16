@@ -14,18 +14,6 @@ interface Viewport {
   zoom: number;
 }
 
-interface Region {
-  id: string;
-  name: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  color: string;
-  type: 'city' | 'naval_base' | 'region';
-  description?: string;
-}
-
 interface MapElement {
   id: string;
   name: string;
@@ -47,20 +35,22 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     x: 0, y: 0, width: 1200, height: 800, zoom: 0.5
   });
   
-  const [isPanning, setIsPanning] = useState(false);
-  const [showCrosshair, setShowCrosshair] = useState(false);
-  const [crosshairPosition, setCrosshairPosition] = useState({ x: 0, y: 0 });
-  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [hasMoved, setHasMoved] = useState(false);
   const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
+
+  // Ref-ы для отслеживания перетаскивания (не вызывают ре-рендер)
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const hasMovedRef = useRef(false);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
   
-  // Элементы на карте (города, базы, корабли)
+  // Элементы на карте
   const mapElements: MapElement[] = [
     { id: 'tokyo', name: 'Токио', x: 7800, y: 1400, type: 'city', description: 'Столица Японии, главный порт', icon: '🏙️' },
     { id: 'yokosuka', name: 'Йокосука', x: 7900, y: 1500, type: 'naval_base', description: 'Крупнейшая военно-морская база Японии', icon: '⚓' },
     { id: 'manila', name: 'Манила', x: 6900, y: 2500, type: 'city', description: 'Столица Филиппин', icon: '🏙️' },
     { id: 'subic_bay', name: 'Субик-Бей', x: 6850, y: 2550, type: 'naval_base', description: 'Американская военно-морская база', icon: '⚓' },
-    { id: 'midway_atoll', name: 'Мидуэй', x: 4600, y: 1600, type: 'naval_base', description: 'Атолл Мидуэй - стратегическая база США', icon: '⚓' },
+    { id: 'midway_atoll', name: 'Мидуэй', x: 4600, y: 1600, type: 'naval_base', description: 'Атолл Мидуэй — стратегическая база США', icon: '⚓' },
     { id: 'pearl_harbor', name: 'Перл-Харбор', x: 2600, y: 1900, type: 'naval_base', description: 'Главная база Тихоокеанского флота США', icon: '⚓' },
     { id: 'honolulu', name: 'Гонолулу', x: 2700, y: 1850, type: 'city', description: 'Столица Гавайев', icon: '🏙️' },
     { id: 'sydney', name: 'Сидней', x: 7500, y: 4000, type: 'city', description: 'Крупнейший город Австралии', icon: '🏙️' },
@@ -134,7 +124,8 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       hexSampleImage.current = null;
     }
   }, [strategicMapData?.hexSample]);
-  
+
+  // Отрисовка canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -150,6 +141,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     const visibleWidth = viewport.width / viewport.zoom;
     const visibleHeight = viewport.height / viewport.zoom;
     
+    // Тайлы карты
     if (strategicMapData?.tiles) {
       const cols = 7;
       const standardTileWidth = 1500;
@@ -198,30 +190,33 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
           ctx.drawImage(img, screenX, screenY, screenWidth, screenHeight);
         }
       });
-    } else {
-      // Рисуем элементы на карте если нет тайлов
-      mapElements.forEach(element => {
-        const screenX = (element.x - visibleX) * viewport.zoom;
-        const screenY = (element.y - visibleY) * viewport.zoom;
-        
-        if (screenX < -50 || screenX > canvas.width + 50 || screenY < -50 || screenY > canvas.height + 50) {
-          return;
-        }
-        
-        // Рисуем иконку
-        ctx.font = `${Math.max(20, 32 * viewport.zoom)}px sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(element.icon, screenX, screenY);
-        
-        // Рисуем название
-        ctx.font = `${Math.max(10, 14 * viewport.zoom)}px sans-serif`;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(element.name, screenX, screenY + 25 * viewport.zoom);
-      });
     }
     
-    // Grid
+    // Элементы карты (всегда рисуем поверх тайлов)
+    mapElements.forEach(element => {
+      const screenX = (element.x - visibleX) * viewport.zoom;
+      const screenY = (element.y - visibleY) * viewport.zoom;
+      
+      if (screenX < -60 || screenX > canvas.width + 60 || screenY < -60 || screenY > canvas.height + 60) {
+        return;
+      }
+      
+      // Иконка
+      ctx.font = `${Math.max(20, 32 * viewport.zoom)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(element.icon, screenX, screenY);
+      
+      // Название
+      ctx.font = `bold ${Math.max(10, 13 * viewport.zoom)}px sans-serif`;
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 3;
+      ctx.strokeText(element.name, screenX, screenY + 22 * viewport.zoom);
+      ctx.fillText(element.name, screenX, screenY + 22 * viewport.zoom);
+    });
+    
+    // Сетка
     ctx.strokeStyle = '#334155';
     ctx.lineWidth = 1 / viewport.zoom;
     const gridSize = 500;
@@ -241,7 +236,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       }
     }
     
-    // Hex grid
+    // Гексагональная сетка
     const hexWidth = 21;
     const hexHeight = 25;
     const hexSpacingX = hexWidth;
@@ -295,77 +290,83 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     }
   }, [viewport, strategicMapData, mapElements]);
   
-  // Обработка нажатия мыши - показываем крестик и начинаем отслеживание
-  const handleMouseDown = (e: React.MouseEvent) => {
-    setIsPanning(true);
-    setShowCrosshair(true);
-    setCrosshairPosition({ x: e.clientX, y: e.clientY });
-    setPanStart({ x: e.clientX, y: e.clientY });
-    setHasMoved(false);
-  };
-  
-  // Обработка перемещения мыши - перемещаем карту если зажато
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isPanning) return;
+  // Поиск элемента по экранным координатам клика
+  const findElementAtScreen = (screenX: number, screenY: number): MapElement | null => {
+    const v = viewportRef.current;
+    const mapX = v.x / v.zoom + screenX / v.zoom;
+    const mapY = v.y / v.zoom + screenY / v.zoom;
     
-    const dx = e.clientX - panStart.x;
-    const dy = e.clientY - panStart.y;
+    // Ищем ближайший элемент в радиусе клика
+    const clickRadius = 60 / v.zoom; // 60 экранных пикселей в мировых координатах
+    let closest: MapElement | null = null;
+    let closestDist = Infinity;
     
-    // Если мышь сдвинулась больше чем на 5 пикселей - считаем это перемещением
-    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-      setHasMoved(true);
+    for (const element of mapElements) {
+      const distance = Math.sqrt(Math.pow(mapX - element.x, 2) + Math.pow(mapY - element.y, 2));
+      if (distance < clickRadius && distance < closestDist) {
+        closestDist = distance;
+        closest = element;
+      }
     }
     
-    if (hasMoved) {
+    return closest;
+  };
+  
+  // === Обработчики мыши ===
+  
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // только ЛКМ
+    isPanningRef.current = true;
+    hasMovedRef.current = false;
+    panStartRef.current = { x: e.clientX, y: e.clientY };
+  };
+  
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isPanningRef.current) return;
+    
+    const dx = e.clientX - panStartRef.current.x;
+    const dy = e.clientY - panStartRef.current.y;
+    
+    if (!hasMovedRef.current && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      hasMovedRef.current = true;
+    }
+    
+    if (hasMovedRef.current) {
       setViewport(prev => ({
         ...prev,
         x: Math.max(0, Math.min(MAP_WIDTH * prev.zoom - prev.width, prev.x - dx)),
         y: Math.max(0, Math.min(MAP_HEIGHT * prev.zoom - prev.height, prev.y - dy))
       }));
-      setPanStart({ x: e.clientX, y: e.clientY });
+      panStartRef.current = { x: e.clientX, y: e.clientY };
     }
-    
-    // Обновляем позицию крестика
-    setCrosshairPosition({ x: e.clientX, y: e.clientY });
   };
   
-  // Обработка отпускания мыши
   const handleMouseUp = (e: React.MouseEvent) => {
-    setIsPanning(false);
-    setShowCrosshair(false);
+    if (e.button !== 0) return;
     
-    // Если не было перемещения - это клик
-    if (!hasMoved) {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      
-      const rect = canvas.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-      
-      const mapX = viewport.x / viewport.zoom + clickX / viewport.zoom;
-      const mapY = viewport.y / viewport.zoom + clickY / viewport.zoom;
-      
-      // Проверяем, попали ли на элемент
-      const clickedElement = mapElements.find(element => {
-        const distance = Math.sqrt(Math.pow(mapX - element.x, 2) + Math.pow(mapY - element.y, 2));
-        return distance < 50; // Радиус клика 50 пикселей
-      });
-      
-      if (clickedElement) {
-        setSelectedElement(clickedElement);
+    // Если не двигали мышь — это клик по элементу
+    if (!hasMovedRef.current) {
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (rect) {
+        const screenX = e.clientX - rect.left;
+        const screenY = e.clientY - rect.top;
+        const element = findElementAtScreen(screenX, screenY);
+        if (element) {
+          setSelectedElement(element);
+        }
       }
     }
     
-    setHasMoved(false);
+    isPanningRef.current = false;
+    hasMovedRef.current = false;
   };
   
   const handleMouseLeave = () => {
-    setIsPanning(false);
-    setShowCrosshair(false);
+    isPanningRef.current = false;
+    hasMovedRef.current = false;
   };
   
-  // Обработка колеса мыши - масштабирование
+  // Масштабирование колесом
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -412,10 +413,11 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
         </div>
       </div>
       
-      {/* Карта */}
+      {/* Карта — обычный курсор */}
       <div 
         ref={containerRef}
-        className={`flex-1 relative overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className="flex-1 relative overflow-hidden"
+        style={{ cursor: 'default' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -428,41 +430,13 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
           height={viewport.height}
           className="absolute top-0 left-0"
         />
-        
-        {/* Крестик координат - показывается только при зажатии */}
-        {showCrosshair && (
-          <div 
-            className="absolute pointer-events-none z-10"
-            style={{
-              left: crosshairPosition.x - (containerRef.current?.getBoundingClientRect().left || 0),
-              top: crosshairPosition.y - (containerRef.current?.getBoundingClientRect().top || 0),
-              transform: 'translate(-50%, -50%)'
-            }}
-          >
-            <svg width="40" height="40" viewBox="0 0 40 40">
-              {/* Вертикальная линия */}
-              <line x1="20" y1="0" x2="20" y2="15" stroke="#06b6d4" strokeWidth="2" />
-              <line x1="20" y1="25" x2="20" y2="40" stroke="#06b6d4" strokeWidth="2" />
-              {/* Горизонтальная линия */}
-              <line x1="0" y1="20" x2="15" y2="20" stroke="#06b6d4" strokeWidth="2" />
-              <line x1="25" y1="20" x2="40" y2="20" stroke="#06b6d4" strokeWidth="2" />
-              {/* Стрелки */}
-              <polygon points="20,5 17,10 23,10" fill="#06b6d4" />
-              <polygon points="20,35 17,30 23,30" fill="#06b6d4" />
-              <polygon points="5,20 10,17 10,23" fill="#06b6d4" />
-              <polygon points="35,20 30,17 30,23" fill="#06b6d4" />
-              {/* Центральный круг */}
-              <circle cx="20" cy="20" r="3" fill="#06b6d4" />
-            </svg>
-          </div>
-        )}
       </div>
       
       {/* Подсказки */}
       <div className="absolute bottom-4 left-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3 text-xs text-slate-400">
-        <p>🖱️ Зажмите ЛКМ - перемещение карты</p>
-        <p>👆 Короткий клик на элементе - открыть информацию</p>
-        <p>🔍 Колесо мыши - масштабирование</p>
+        <p>🖱️ Зажмите ЛКМ и двигайте — перемещение карты</p>
+        <p>👆 Короткий клик на объекте — открыть информацию</p>
+        <p>🔍 Колесо мыши — масштабирование</p>
       </div>
       
       {/* Модальное окно с информацией об элементе */}
@@ -481,7 +455,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
                   </p>
                 </div>
               </div>
-              <button onClick={() => setSelectedElement(null)} className="text-slate-400 hover:text-white text-2xl">×</button>
+              <button onClick={() => setSelectedElement(null)} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
             </div>
             
             {selectedElement.description && (
