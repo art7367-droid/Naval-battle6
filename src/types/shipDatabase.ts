@@ -25,6 +25,7 @@ export interface StrategicMapData {
   tileWidth: number;
   tileHeight: number;
   hexSample?: string; // Изображение образца гекса для отрисовки сетки
+  hexGridOpacity?: number; // Прозрачность границ гексагональной сетки (0..1)
 }
 
 export interface ShipDatabaseEntry {

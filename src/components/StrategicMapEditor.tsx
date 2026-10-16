@@ -48,6 +48,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverTile, setDragOverTile] = useState<number | null>(null);
   const [hexSample, setHexSample] = useState<string | undefined>(strategicMapData?.hexSample);
+  const [hexGridOpacity, setHexGridOpacity] = useState<number>(strategicMapData?.hexGridOpacity ?? 0.3);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -68,7 +69,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
               if (existing >= 0) { updated = [...prev]; updated[existing] = { id: tileId, imageData, row, col }; }
               else { updated = [...prev, { id: tileId, imageData, row, col }]; }
               const tilesWithSizes = updated.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-              const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight };
+              const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity };
               saveToIndexedDB(dataToSave).then(() => console.log(`✅ Тайл ${String(tileId).padStart(2, '0')} сохранён`)).catch(err => console.error('❌', err));
               return updated;
             });
@@ -97,7 +98,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
           if (existing >= 0) { updated = [...prev]; updated[existing] = { id: tileId, imageData, row, col }; }
           else { updated = [...prev, { id: tileId, imageData, row, col }]; }
           const tilesWithSizes = updated.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-          const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight };
+          const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity };
           saveToIndexedDB(dataToSave).then(() => console.log(`✅ Тайл ${String(tileId).padStart(2, '0')} сохранён`)).catch(err => console.error('❌', err));
           return updated;
         });
@@ -116,7 +117,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
 
   const handleSave = async () => {
     const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-    const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample };
+    const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity };
     try {
       await saveToIndexedDB(dataToSave);
       onUpdate(dataToSave);
@@ -133,7 +134,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
 
   const handleExport = () => {
     const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-    const dataToExport: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample };
+    const dataToExport: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity };
     const jsonData = JSON.stringify(dataToExport, null, 2);
     const blob = new Blob([jsonData], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -187,7 +188,7 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
         const processedImageData = canvas.toDataURL('image/png');
         setHexSample(processedImageData);
         const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-        const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample: processedImageData };
+        const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample: processedImageData, hexGridOpacity };
         await saveToIndexedDB(dataToSave);
         alert('✅ Образец гекса загружен! Белый фон удалён.');
       };
@@ -222,9 +223,55 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
           </div>
         </div>
         {hexSample ? (
-          <div className="flex items-center gap-3">
-            <img src={hexSample} alt="Образец гекса" className="border border-slate-600 rounded" style={{ maxWidth: '100px', maxHeight: '100px' }} />
-            <div className="text-xs text-green-400">✅ Образец загружен</div>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <img src={hexSample} alt="Образец гекса" className="border border-slate-600 rounded" style={{ maxWidth: '100px', maxHeight: '100px', opacity: hexGridOpacity }} />
+              <div className="text-xs text-green-400">✅ Образец загружен</div>
+            </div>
+            <div className="flex items-center gap-3 pt-2 border-t border-slate-700">
+              <label className="text-xs text-slate-300 whitespace-nowrap">🔲 Прозрачность границ сетки:</label>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                value={Math.round(hexGridOpacity * 100)}
+                onChange={(e) => {
+                  const newOpacity = parseInt(e.target.value) / 100;
+                  setHexGridOpacity(newOpacity);
+                  // Автосохранение
+                  const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
+                  const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity: newOpacity };
+                  saveToIndexedDB(dataToSave).catch(err => console.error('❌', err));
+                }}
+                className="flex-1 h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
+                style={{
+                  background: `linear-gradient(to right, #06b6d4 0%, #06b6d4 ${hexGridOpacity * 100}%, #374151 ${hexGridOpacity * 100}%, #374151 100%)`
+                }}
+              />
+              <span className="text-xs text-cyan-300 font-semibold w-12 text-right">{Math.round(hexGridOpacity * 100)}%</span>
+            </div>
+            <div className="flex gap-2">
+              {[0, 10, 20, 30, 50, 70, 100].map((percent) => (
+                <button
+                  key={percent}
+                  onClick={() => {
+                    const newOpacity = percent / 100;
+                    setHexGridOpacity(newOpacity);
+                    const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
+                    const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity: newOpacity };
+                    saveToIndexedDB(dataToSave).catch(err => console.error('❌', err));
+                  }}
+                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
+                    Math.round(hexGridOpacity * 100) === percent
+                      ? 'bg-cyan-600 text-white'
+                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                  }`}
+                >
+                  {percent}%
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="text-xs text-slate-500">⚠️ Образец не загружен</div>

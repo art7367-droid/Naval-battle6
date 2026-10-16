@@ -256,6 +256,8 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       const sampleImg = hexSampleImage.current;
       const sampleWidth = hexWidth * viewport.zoom;
       const sampleHeight = hexHeight * viewport.zoom;
+      const hexOpacity = strategicMapData?.hexGridOpacity ?? 0.3;
+      ctx.globalAlpha = hexOpacity;
       for (let row = startHexRow; row < endHexRow; row++) {
         for (let col = startHexCol; col < endHexCol; col++) {
           const offsetX = (row % 2) * (hexSpacingX / 2);
@@ -266,7 +268,10 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
           ctx.drawImage(sampleImg, screenX, screenY, sampleWidth, sampleHeight);
         }
       }
+      ctx.globalAlpha = 1.0;
     } else {
+      const hexOpacity = strategicMapData?.hexGridOpacity ?? 0.3;
+      ctx.globalAlpha = hexOpacity;
       for (let row = startHexRow; row < endHexRow; row++) {
         for (let col = startHexCol; col < endHexCol; col++) {
           const offsetX = (row % 2) * (hexSpacingX / 2);
@@ -287,6 +292,7 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
           ctx.stroke();
         }
       }
+      ctx.globalAlpha = 1.0;
     }
   }, [viewport, strategicMapData, mapElements]);
   
