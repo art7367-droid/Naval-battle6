@@ -22,6 +22,18 @@ interface Region {
   width: number;
   height: number;
   color: string;
+  type: 'city' | 'naval_base' | 'region';
+  description?: string;
+}
+
+interface MapElement {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  type: 'city' | 'naval_base' | 'ship';
+  description?: string;
+  icon: string;
 }
 
 export default function StrategicMap({ onBack, strategicMapData }: StrategicMapProps) {
@@ -35,18 +47,30 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     x: 0, y: 0, width: 1200, height: 800, zoom: 0.5
   });
   
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [selectedRegion, setSelectedRegion] = useState<Region | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const [showCrosshair, setShowCrosshair] = useState(false);
+  const [crosshairPosition, setCrosshairPosition] = useState({ x: 0, y: 0 });
+  const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [hasMoved, setHasMoved] = useState(false);
+  const [selectedElement, setSelectedElement] = useState<MapElement | null>(null);
   
-  const regions: Region[] = [
-    { id: 'japan', name: 'Япония', x: 7500, y: 1200, width: 800, height: 600, color: '#dc2626' },
-    { id: 'philippines', name: 'Филиппины', x: 6800, y: 2400, width: 600, height: 500, color: '#2563eb' },
-    { id: 'midway', name: 'Мидуэй', x: 4500, y: 1500, width: 400, height: 400, color: '#16a34a' },
-    { id: 'hawaii', name: 'Гавайи', x: 2500, y: 1800, width: 500, height: 400, color: '#9333ea' },
-    { id: 'australia', name: 'Австралия', x: 7000, y: 3500, width: 1200, height: 900, color: '#ea580c' },
-    { id: 'alaska', name: 'Аляска', x: 1000, y: 500, width: 800, height: 600, color: '#0891b2' },
-    { id: 'california', name: 'Калифорния', x: 800, y: 1500, width: 600, height: 800, color: '#ca8a04' },
+  // Элементы на карте (города, базы, корабли)
+  const mapElements: MapElement[] = [
+    { id: 'tokyo', name: 'Токио', x: 7800, y: 1400, type: 'city', description: 'Столица Японии, главный порт', icon: '🏙️' },
+    { id: 'yokosuka', name: 'Йокосука', x: 7900, y: 1500, type: 'naval_base', description: 'Крупнейшая военно-морская база Японии', icon: '⚓' },
+    { id: 'manila', name: 'Манила', x: 6900, y: 2500, type: 'city', description: 'Столица Филиппин', icon: '🏙️' },
+    { id: 'subic_bay', name: 'Субик-Бей', x: 6850, y: 2550, type: 'naval_base', description: 'Американская военно-морская база', icon: '⚓' },
+    { id: 'midway_atoll', name: 'Мидуэй', x: 4600, y: 1600, type: 'naval_base', description: 'Атолл Мидуэй - стратегическая база США', icon: '⚓' },
+    { id: 'pearl_harbor', name: 'Перл-Харбор', x: 2600, y: 1900, type: 'naval_base', description: 'Главная база Тихоокеанского флота США', icon: '⚓' },
+    { id: 'honolulu', name: 'Гонолулу', x: 2700, y: 1850, type: 'city', description: 'Столица Гавайев', icon: '🏙️' },
+    { id: 'sydney', name: 'Сидней', x: 7500, y: 4000, type: 'city', description: 'Крупнейший город Австралии', icon: '🏙️' },
+    { id: 'darwin', name: 'Дарвин', x: 7200, y: 3700, type: 'naval_base', description: 'Военно-морская база Австралии', icon: '⚓' },
+    { id: 'dutch_harbor', name: 'Датч-Харбор', x: 1200, y: 700, type: 'naval_base', description: 'Американская база на Аляске', icon: '⚓' },
+    { id: 'anchorage', name: 'Анкоридж', x: 1400, y: 600, type: 'city', description: 'Крупнейший город Аляски', icon: '🏙️' },
+    { id: 'san_diego', name: 'Сан-Диего', x: 900, y: 1800, type: 'naval_base', description: 'База Тихоокеанского флота США', icon: '⚓' },
+    { id: 'san_francisco', name: 'Сан-Франциско', x: 850, y: 1700, type: 'city', description: 'Крупный порт на западном побережье США', icon: '🏙️' },
+    { id: 'yamato', name: 'Линкор Ямато', x: 7600, y: 1600, type: 'ship', description: 'Крупнейший линкор в истории, 460-мм орудия', icon: '🚢' },
+    { id: 'enterprise', name: 'Авианосец Энтерпрайз', x: 2800, y: 2000, type: 'ship', description: 'Легендарный американский авианосец', icon: '🚢' },
   ];
   
   useEffect(() => {
@@ -175,27 +199,25 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
         }
       });
     } else {
-      regions.forEach(region => {
-        const regionRight = region.x + region.width;
-        const regionBottom = region.y + region.height;
-        if (regionRight < visibleX || region.x > visibleX + visibleWidth ||
-            regionBottom < visibleY || region.y > visibleY + visibleHeight) {
+      // Рисуем элементы на карте если нет тайлов
+      mapElements.forEach(element => {
+        const screenX = (element.x - visibleX) * viewport.zoom;
+        const screenY = (element.y - visibleY) * viewport.zoom;
+        
+        if (screenX < -50 || screenX > canvas.width + 50 || screenY < -50 || screenY > canvas.height + 50) {
           return;
         }
-        const screenX = (region.x - visibleX) * viewport.zoom;
-        const screenY = (region.y - visibleY) * viewport.zoom;
-        const screenWidth = region.width * viewport.zoom;
-        const screenHeight = region.height * viewport.zoom;
-        ctx.fillStyle = region.color + '40';
-        ctx.fillRect(screenX, screenY, screenWidth, screenHeight);
-        ctx.strokeStyle = region.color;
-        ctx.lineWidth = 2 / viewport.zoom;
-        ctx.strokeRect(screenX, screenY, screenWidth, screenHeight);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `${Math.max(12, 16 * viewport.zoom)}px sans-serif`;
+        
+        // Рисуем иконку
+        ctx.font = `${Math.max(20, 32 * viewport.zoom)}px sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(region.name, screenX + screenWidth / 2, screenY + screenHeight / 2);
+        ctx.fillText(element.icon, screenX, screenY);
+        
+        // Рисуем название
+        ctx.font = `${Math.max(10, 14 * viewport.zoom)}px sans-serif`;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(element.name, screenX, screenY + 25 * viewport.zoom);
       });
     }
     
@@ -271,27 +293,79 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
         }
       }
     }
-  }, [viewport, regions, strategicMapData]);
+  }, [viewport, strategicMapData, mapElements]);
   
+  // Обработка нажатия мыши - показываем крестик и начинаем отслеживание
   const handleMouseDown = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
+    setIsPanning(true);
+    setShowCrosshair(true);
+    setCrosshairPosition({ x: e.clientX, y: e.clientY });
+    setPanStart({ x: e.clientX, y: e.clientY });
+    setHasMoved(false);
   };
   
+  // Обработка перемещения мыши - перемещаем карту если зажато
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isDragging) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    setViewport(prev => ({
-      ...prev,
-      x: Math.max(0, Math.min(MAP_WIDTH * prev.zoom - prev.width, prev.x - dx)),
-      y: Math.max(0, Math.min(MAP_HEIGHT * prev.zoom - prev.height, prev.y - dy))
-    }));
-    setDragStart({ x: e.clientX, y: e.clientY });
+    if (!isPanning) return;
+    
+    const dx = e.clientX - panStart.x;
+    const dy = e.clientY - panStart.y;
+    
+    // Если мышь сдвинулась больше чем на 5 пикселей - считаем это перемещением
+    if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+      setHasMoved(true);
+    }
+    
+    if (hasMoved) {
+      setViewport(prev => ({
+        ...prev,
+        x: Math.max(0, Math.min(MAP_WIDTH * prev.zoom - prev.width, prev.x - dx)),
+        y: Math.max(0, Math.min(MAP_HEIGHT * prev.zoom - prev.height, prev.y - dy))
+      }));
+      setPanStart({ x: e.clientX, y: e.clientY });
+    }
+    
+    // Обновляем позицию крестика
+    setCrosshairPosition({ x: e.clientX, y: e.clientY });
   };
   
-  const handleMouseUp = () => { setIsDragging(false); };
+  // Обработка отпускания мыши
+  const handleMouseUp = (e: React.MouseEvent) => {
+    setIsPanning(false);
+    setShowCrosshair(false);
+    
+    // Если не было перемещения - это клик
+    if (!hasMoved) {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const clickY = e.clientY - rect.top;
+      
+      const mapX = viewport.x / viewport.zoom + clickX / viewport.zoom;
+      const mapY = viewport.y / viewport.zoom + clickY / viewport.zoom;
+      
+      // Проверяем, попали ли на элемент
+      const clickedElement = mapElements.find(element => {
+        const distance = Math.sqrt(Math.pow(mapX - element.x, 2) + Math.pow(mapY - element.y, 2));
+        return distance < 50; // Радиус клика 50 пикселей
+      });
+      
+      if (clickedElement) {
+        setSelectedElement(clickedElement);
+      }
+    }
+    
+    setHasMoved(false);
+  };
   
+  const handleMouseLeave = () => {
+    setIsPanning(false);
+    setShowCrosshair(false);
+  };
+  
+  // Обработка колеса мыши - масштабирование
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
@@ -307,23 +381,9 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     }));
   };
   
-  const handleClick = (e: React.MouseEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-    const mapX = viewport.x / viewport.zoom + clickX / viewport.zoom;
-    const mapY = viewport.y / viewport.zoom + clickY / viewport.zoom;
-    const clickedRegion = regions.find(region =>
-      mapX >= region.x && mapX <= region.x + region.width &&
-      mapY >= region.y && mapY <= region.y + region.height
-    );
-    setSelectedRegion(clickedRegion || null);
-  };
-  
   return (
     <div className="min-h-screen bg-slate-900 text-white flex flex-col">
+      {/* Верхняя панель */}
       <div className="bg-slate-800 p-4 flex justify-between items-center border-b border-slate-700">
         <button onClick={onBack} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">← Назад в меню</button>
         <h1 className="text-2xl font-bold text-cyan-300">🗺️ Стратегическая карта Тихого океана</h1>
@@ -351,25 +411,104 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
           </div>
         </div>
       </div>
-      <div ref={containerRef} className="flex-1 relative overflow-hidden cursor-move"
-        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-        onWheel={handleWheel} onClick={handleClick}>
-        <canvas ref={canvasRef} width={viewport.width} height={viewport.height} className="absolute top-0 left-0" />
+      
+      {/* Карта */}
+      <div 
+        ref={containerRef}
+        className={`flex-1 relative overflow-hidden ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
+        onWheel={handleWheel}
+      >
+        <canvas
+          ref={canvasRef}
+          width={viewport.width}
+          height={viewport.height}
+          className="absolute top-0 left-0"
+        />
+        
+        {/* Крестик координат - показывается только при зажатии */}
+        {showCrosshair && (
+          <div 
+            className="absolute pointer-events-none z-10"
+            style={{
+              left: crosshairPosition.x - (containerRef.current?.getBoundingClientRect().left || 0),
+              top: crosshairPosition.y - (containerRef.current?.getBoundingClientRect().top || 0),
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <svg width="40" height="40" viewBox="0 0 40 40">
+              {/* Вертикальная линия */}
+              <line x1="20" y1="0" x2="20" y2="15" stroke="#06b6d4" strokeWidth="2" />
+              <line x1="20" y1="25" x2="20" y2="40" stroke="#06b6d4" strokeWidth="2" />
+              {/* Горизонтальная линия */}
+              <line x1="0" y1="20" x2="15" y2="20" stroke="#06b6d4" strokeWidth="2" />
+              <line x1="25" y1="20" x2="40" y2="20" stroke="#06b6d4" strokeWidth="2" />
+              {/* Стрелки */}
+              <polygon points="20,5 17,10 23,10" fill="#06b6d4" />
+              <polygon points="20,35 17,30 23,30" fill="#06b6d4" />
+              <polygon points="5,20 10,17 10,23" fill="#06b6d4" />
+              <polygon points="35,20 30,17 30,23" fill="#06b6d4" />
+              {/* Центральный круг */}
+              <circle cx="20" cy="20" r="3" fill="#06b6d4" />
+            </svg>
+          </div>
+        )}
       </div>
-      {selectedRegion && (
-        <div className="absolute bottom-4 right-4 bg-slate-800 border border-slate-700 rounded-lg p-4 shadow-lg">
-          <h3 className="text-lg font-bold text-cyan-300 mb-2">{selectedRegion.name}</h3>
-          <div className="text-sm text-slate-300">
-            <p>Координаты: ({selectedRegion.x}, {selectedRegion.y})</p>
-            <p>Размер: {selectedRegion.width} × {selectedRegion.height}</p>
+      
+      {/* Подсказки */}
+      <div className="absolute bottom-4 left-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3 text-xs text-slate-400">
+        <p>🖱️ Зажмите ЛКМ - перемещение карты</p>
+        <p>👆 Короткий клик на элементе - открыть информацию</p>
+        <p>🔍 Колесо мыши - масштабирование</p>
+      </div>
+      
+      {/* Модальное окно с информацией об элементе */}
+      {selectedElement && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setSelectedElement(null)}>
+          <div className="bg-slate-800 border border-slate-600 rounded-lg p-6 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div className="flex items-center gap-3">
+                <span className="text-4xl">{selectedElement.icon}</span>
+                <div>
+                  <h3 className="text-2xl font-bold text-cyan-300">{selectedElement.name}</h3>
+                  <p className="text-sm text-slate-400">
+                    {selectedElement.type === 'city' && '🏙️ Город'}
+                    {selectedElement.type === 'naval_base' && '⚓ Военно-морская база'}
+                    {selectedElement.type === 'ship' && '🚢 Корабль'}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedElement(null)} className="text-slate-400 hover:text-white text-2xl">×</button>
+            </div>
+            
+            {selectedElement.description && (
+              <div className="mb-4 p-3 bg-slate-900/50 rounded border border-slate-700">
+                <p className="text-slate-300">{selectedElement.description}</p>
+              </div>
+            )}
+            
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="p-2 bg-slate-900/50 rounded">
+                <div className="text-slate-400 text-xs">Координаты X</div>
+                <div className="text-white font-semibold">{Math.round(selectedElement.x)}</div>
+              </div>
+              <div className="p-2 bg-slate-900/50 rounded">
+                <div className="text-slate-400 text-xs">Координаты Y</div>
+                <div className="text-white font-semibold">{Math.round(selectedElement.y)}</div>
+              </div>
+            </div>
+            
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setSelectedElement(null)} className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors">
+                Закрыть
+              </button>
+            </div>
           </div>
         </div>
       )}
-      <div className="absolute bottom-4 left-4 bg-slate-800/80 border border-slate-700 rounded-lg p-3 text-xs text-slate-400">
-        <p>🖱️ Перетаскивание - перемещение карты</p>
-        <p>🔍 Колесо мыши - масштабирование</p>
-        <p>👆 Клик - выбор региона</p>
-      </div>
     </div>
   );
 }
