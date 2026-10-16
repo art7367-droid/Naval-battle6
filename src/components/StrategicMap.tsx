@@ -258,12 +258,13 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       const sampleWidth = hexWidth * viewport.zoom;
       const sampleHeight = hexHeight * viewport.zoom;
       const hexOpacity = strategicMapData?.hexGridOpacity ?? 0.3;
+      const hexOffsetY = 6; // Смещение сетки вниз на 6 пикселей
       ctx.globalAlpha = hexOpacity;
       for (let row = startHexRow; row < endHexRow; row++) {
         for (let col = startHexCol; col < endHexCol; col++) {
           const offsetX = (row % 2) * (hexSpacingX / 2);
           const centerX = col * hexSpacingX + offsetX;
-          const centerY = row * hexSpacingY;
+          const centerY = row * hexSpacingY + hexOffsetY;
           const screenX = (centerX - visibleX) * viewport.zoom - sampleWidth / 2;
           const screenY = (centerY - visibleY) * viewport.zoom - sampleHeight / 2;
           ctx.drawImage(sampleImg, screenX, screenY, sampleWidth, sampleHeight);
@@ -272,12 +273,13 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
       ctx.globalAlpha = 1.0;
     } else {
       const hexOpacity = strategicMapData?.hexGridOpacity ?? 0.3;
+      const hexOffsetY = 6; // Смещение сетки вниз на 6 пикселей
       ctx.globalAlpha = hexOpacity;
       for (let row = startHexRow; row < endHexRow; row++) {
         for (let col = startHexCol; col < endHexCol; col++) {
           const offsetX = (row % 2) * (hexSpacingX / 2);
           const centerX = col * hexSpacingX + offsetX;
-          const centerY = row * hexSpacingY;
+          const centerY = row * hexSpacingY + hexOffsetY;
           const screenX = (centerX - visibleX) * viewport.zoom;
           const screenY = (centerY - visibleY) * viewport.zoom;
           const screenRadiusX = (hexWidth / 2) * viewport.zoom;
@@ -332,17 +334,21 @@ export default function StrategicMap({ onBack, strategicMapData }: StrategicMapP
     const hexWidth = 21;
     const hexHeight = 25;
     const hexSpacingX = hexWidth;
-    const hexSpacingY = hexHeight * 0.75;
+    const hexSpacingY = hexHeight * 0.75; // 18.75px - расстояние между центрами рядов
+    const hexOffsetY = 6; // Смещение начала отсчёта вниз на 6 пикселей
     
-    // Вычисляем ряд (вертикальная координата)
-    const row = Math.floor(mapY / hexSpacingY);
+    // Вычисляем ряд (вертикальная координата) с учётом смещения
+    // Используем расстояние между центрами рядов (18.75px), а не полную высоту гекса (25px)
+    // Границы между рядами проходят через каждые 18.75px
+    const adjustedMapY = mapY - hexOffsetY;
+    const row = Math.floor(adjustedMapY / hexSpacingY);
     
     // Вычисляем колонку с учётом смещения нечётных рядов
     const offsetX = (row % 2) * (hexSpacingX / 2);
     const col = Math.floor((mapX - offsetX) / hexSpacingX);
     
     // Проверяем границы карты
-    const maxRow = Math.ceil(MAP_HEIGHT / hexSpacingY);
+    const maxRow = Math.ceil((MAP_HEIGHT - hexOffsetY) / hexSpacingY);
     const maxCol = Math.ceil(MAP_WIDTH / hexSpacingX);
     
     if (row >= 0 && row < maxRow && col >= 0 && col < maxCol) {
