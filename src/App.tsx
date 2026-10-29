@@ -2,13 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { Ship, GamePhase, Shot, Trajectory, BattleLogEntry, createCompartments, calculateShipStats } from './types';
 import { ShipDatabaseEntry } from './types/shipDatabase';
 import {
-  generatePlayerShips,
-  generateEnemyShips,
-  executeShots,
-  allShipsSunk,
-  getReachableHexes,
-  hexDistance,
-  getHeading,
+  generatePlayerShips, generateEnemyShips, executeShots, allShipsSunk,
+  getReachableHexes, hexDistance, getHeading,
 } from './gameLogic';
 import { resetAI, generateAIShots, generateAIMoves, updateAIAfterShots } from './ai';
 import { processDamagePropagation } from './damagePropagation';
@@ -19,6 +14,11 @@ import ShipDatabaseManager from './components/ShipDatabaseManager';
 import ShipSelectionScreen from './components/ShipSelectionScreen';
 import StrategicMap from './components/StrategicMap';
 import StrategicMapEditor from './components/StrategicMapEditor';
+import HexGridEditor from './components/HexGridEditor'; 
+import GameMapView from './components/GameMapView'; 
+import DatabaseEditor from './components/DatabaseEditor';
+import CampaignLobby from './components/CampaignLobby'; 
+import TacticalBattleView from './components/TacticalBattleView';
 import { saveToIndexedDB, loadFromIndexedDB, migrateFromLocalStorage } from './utils/indexedDB';
 
 function shipIcon(type: string): string {
@@ -32,7 +32,7 @@ function shipIcon(type: string): string {
 
 import { StrategicMapData } from './types/shipDatabase';
 
-type AppScreen = 'menu' | 'database' | 'selection' | 'battle' | 'campaign' | 'mapEditor';
+type AppScreen = 'menu' | 'database' | 'selection' | 'battle' | 'campaign' | 'mapEditor' | 'hexEditor' | 'gameMap' | 'dbEditor' | 'campaignLobby' | 'serverCampaign' | 'landBattle';
 
 function App() {
   const [screen, setScreen] = useState<AppScreen>('menu');
@@ -59,6 +59,16 @@ function App() {
   const [battleLog, setBattleLog] = useState<BattleLogEntry[]>([]);
   const [showBattleLog, setShowBattleLog] = useState(true);
   const [hitMarkers, setHitMarkers] = useState<Array<{shipId: number; compartmentId: string; turn: number; damage: number}>>([]);
+  
+  const [campaignConfig, setCampaignConfig] = useState<any>(null);
+
+  // 🪄 Состояние для наземного боя
+  const [tacticalBattleData, setTacticalBattleData] = useState<{
+    playerShips: any[],
+    enemyShips: any[],
+    landUnits: any[]
+  } | null>(null);
+
   const [strategicMapData, setStrategicMapData] = useState<StrategicMapData | undefined>(() => {
     loadFromIndexedDB().then(data => {
       if (data) { setStrategicMapData(data); }
@@ -78,6 +88,51 @@ function App() {
     setPlayerShotTargets(targets);
   };
 
+  // 🪄 ЗАПУСК МОРСКОГО БОЯ ИЗ КАМПАНИИ
+  const handleServerBattle = useCallback((playerTF: any, enemyTF: any) => {
+    const pShips = generatePlayerShips(3); 
+    const eShips = generateEnemyShips(3);  
+    setPlayerShips(pShips);
+    setEnemyShips(eShips);
+    setScreen('battle');
+    setPhase('movement');
+    setCurrentShipIndex(0);
+    setMessage(`⚔️ Столкновение ОГ "${playerTF.name}" и "${enemyTF.name}"! Ход 1.`);
+    resetAI();
+  }, []);
+
+  // 🪄 ЗАПУСК НАЗЕМНОГО БОЯ (С гарантированной передачей icon_url)
+  const handleStartLandBattle = useCallback((playerUnit: any, enemyUnit: any) => {
+    console.log('🪄 Начало наземного боя. Игрок:', playerUnit, 'Враг:', enemyUnit);
+
+    // Формируем дивизии для тактического поля (42x42)
+    const playerDiv = {
+      ...playerUnit,
+      q: 10, r: 10, // Начальная позиция игрока
+      hp: 100, maxHp: 100, speed: 1, range: 1, ammo: 10, hasMoved: false, hasFired: false,
+      owner: 'japan',
+      icon_url: playerUnit.icon_url // 🪄 Явно передаем значок
+    };
+
+    const enemyDiv = {
+      ...enemyUnit,
+      q: 30, r: 30, // Начальная позиция врага
+      hp: 100, maxHp: 100, speed: 1, range: 1, ammo: 10, hasMoved: false, hasFired: false,
+      owner: 'usa',
+      icon_url: enemyUnit.icon_url // 🪄 Явно передаем значок
+    };
+
+    console.log('🪄 Данные для TacticalBattleView:', [playerDiv, enemyDiv]);
+
+    setTacticalBattleData({
+      playerShips: [],
+      enemyShips: [],
+      landUnits: [playerDiv, enemyDiv]
+    });
+    setScreen('landBattle');
+  }, []);
+
+  // СТАРТ БОЯ ИЗ РЕДАКТОРА КОРАБЛЕЙ
   const startBattleFromDB = useCallback((playerDBShips: ShipDatabaseEntry[], enemyDBShips: ShipDatabaseEntry[]) => {
     setSelectedPlayerShipsFromDB(playerDBShips);
     setSelectedEnemyShipsFromDB(enemyDBShips);
@@ -428,6 +483,10 @@ function App() {
     resetAI();
   };
 
+  // ==========================================
+  // РЕНДЕР ЭКРАНОВ
+  // ==========================================
+
   if (screen === 'menu') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 text-white p-4 flex items-center justify-center">
@@ -437,10 +496,16 @@ function App() {
             <p className="text-xl text-blue-200">Тактическая игра WeGO</p>
           </div>
           <div className="space-y-4">
-            <button onClick={() => setScreen('database')} className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg font-bold text-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg">🔧 Редактор</button>
-            <button onClick={() => setScreen('mapEditor')} className="w-full px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg font-bold text-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg">🗺️ Редактор карты</button>
+            <button onClick={() => setScreen('database')} className="w-full px-6 py-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg font-bold text-lg hover:from-purple-700 hover:to-blue-700 transition-all shadow-lg">🔧 Редактор кораблей</button>
+            <button onClick={() => setScreen('mapEditor')} className="w-full px-6 py-4 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg font-bold text-lg hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg">🖼️ Редактор карты (Тайлы)</button>
+            <button onClick={() => setScreen('hexEditor')} className="w-full px-6 py-4 bg-gradient-to-r from-cyan-600 to-teal-600 rounded-lg font-bold text-lg hover:from-cyan-700 hover:to-teal-700 transition-all shadow-lg">🧭 Картограф (Гексы)</button>
+            
+            <button onClick={() => setScreen('campaignLobby')} className="w-full px-6 py-4 bg-gradient-to-r from-teal-600 to-cyan-600 rounded-lg font-bold text-lg hover:from-teal-700 hover:to-cyan-700 transition-all shadow-lg">🗺️ Серверная кампания (тест)</button>
+
+            <button onClick={() => setScreen('dbEditor')} className="w-full px-6 py-4 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg font-bold text-lg hover:from-orange-700 hover:to-red-700 transition-all shadow-lg">🛠️ Редактор Базы Данных</button>
             <button onClick={() => setScreen('selection')} className="w-full px-6 py-4 bg-gradient-to-r from-red-600 to-orange-600 rounded-lg font-bold text-lg hover:from-red-700 hover:to-orange-700 transition-all shadow-lg">⚔️ Начать бой</button>
-            <button onClick={() => setScreen('campaign')} className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-teal-600 rounded-lg font-bold text-lg hover:from-green-700 hover:to-teal-700 transition-all shadow-lg">🗺️ Кампания</button>
+            
+            <button onClick={() => setScreen('campaign')} className="w-full px-6 py-4 bg-gradient-to-r from-green-600 to-teal-600 rounded-lg font-bold text-lg hover:from-green-700 hover:to-teal-700 transition-all shadow-lg">🗺️ Кампания (Клиент)</button>
           </div>
           <div className="mt-8 text-center text-sm text-slate-400">
             <p>Версия с базой данных кораблей и стратегической картой</p>
@@ -448,6 +513,47 @@ function App() {
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (screen === 'campaignLobby') {
+    return (
+      <CampaignLobby 
+        onBack={() => setScreen('menu')}
+        onStart={(config) => {
+          setCampaignConfig(config);
+          setScreen('serverCampaign');
+        }}
+      />
+    );
+  }
+
+  if (screen === 'serverCampaign') {
+    const testGameId = localStorage.getItem('testGameId') || '7382010f-f2ad-4458-8560-bd0a4c22dcff';
+    const testToken = localStorage.getItem('token') || '';
+
+    return (
+      <GameMapView 
+        onBack={() => setScreen('menu')} 
+        strategicMapData={strategicMapData}
+        gameId={testGameId}
+        token={testToken}
+        campaignConfig={campaignConfig}
+        onStartBattle={handleServerBattle} 
+        onStartLandBattle={handleStartLandBattle} 
+      />
+    );
+  }
+
+  // 🪄 ЭКРАН НАЗЕМНОГО БОЯ
+  if (screen === 'landBattle' && tacticalBattleData) {
+    return (
+      <TacticalBattleView 
+        playerShips={tacticalBattleData.playerShips}
+        enemyShips={tacticalBattleData.enemyShips}
+        initialLandUnits={tacticalBattleData.landUnits}
+        onBack={() => setScreen('serverCampaign')}
+      />
     );
   }
 
@@ -493,10 +599,28 @@ function App() {
     );
   }
 
+  if (screen === 'hexEditor') {
+    return (
+      <HexGridEditor 
+        onBack={() => setScreen('menu')} 
+        strategicMapData={strategicMapData} 
+      />
+    );
+  }
+
+  if (screen === 'dbEditor') {
+    return (
+      <DatabaseEditor onBack={() => setScreen('menu')} />
+    );
+  }
+
   if (screen === 'campaign') {
     return <StrategicMap onBack={() => setScreen('menu')} strategicMapData={strategicMapData} />;
   }
 
+  // ==========================================
+  // БОЕВОЙ ЭКРАН (Морской)
+  // ==========================================
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 text-white p-1">
       <div className="w-full">

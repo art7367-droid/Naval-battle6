@@ -1,10 +1,17 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { StrategicMapData } from '../types/shipDatabase';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../utils/indexedDB';
 
 interface StrategicMapEditorProps {
   strategicMapData?: StrategicMapData;
   onUpdate: (data: StrategicMapData) => void;
+}
+
+// 👈 Интерфейс для иконок
+export interface MapIcon {
+  id: string;
+  name: string;
+  imageData: string;
 }
 
 export default function StrategicMapEditor({ strategicMapData, onUpdate }: StrategicMapEditorProps) {
@@ -20,6 +27,22 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
   const lastColumnWidth = 703;
   const lastRowHeight = 267;
   
+  // 👈 Состояние для иконок
+  const [mapIcons, setMapIcons] = useState<MapIcon[]>([]);
+  const iconInputRef = useRef<HTMLInputElement>(null);
+
+  // 👈 Загрузка иконок при старте
+  useEffect(() => {
+    const savedIcons = localStorage.getItem('naval_battle_map_icons');
+    if (savedIcons) {
+      try {
+        setMapIcons(JSON.parse(savedIcons));
+      } catch (e) {
+        console.error('Ошибка загрузки иконок', e);
+      }
+    }
+  }, []);
+
   const getTileSize = (tileId: number) => {
     const row = Math.floor(tileId / cols);
     const col = tileId % cols;
@@ -49,6 +72,35 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
   const [dragOverTile, setDragOverTile] = useState<number | null>(null);
   const [hexSample, setHexSample] = useState<string | undefined>(strategicMapData?.hexSample);
   const [hexGridOpacity, setHexGridOpacity] = useState<number>(strategicMapData?.hexGridOpacity ?? 0.3);
+
+  // 👈 Обработчик загрузки новой иконки
+  const handleIconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const imageData = event.target?.result as string;
+      const newIcon: MapIcon = {
+        id: `icon_${Date.now()}`,
+        name: file.name.replace(/\.[^/.]+$/, ""), // Имя файла без расширения
+        imageData
+      };
+      
+      const updatedIcons = [...mapIcons, newIcon];
+      setMapIcons(updatedIcons);
+      localStorage.setItem('naval_battle_map_icons', JSON.stringify(updatedIcons));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // 👈 Удаление иконки
+  const handleDeleteIcon = (iconId: string) => {
+    const updatedIcons = mapIcons.filter(i => i.id !== iconId);
+    setMapIcons(updatedIcons);
+    localStorage.setItem('naval_battle_map_icons', JSON.stringify(updatedIcons));
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -203,16 +255,47 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-lg font-bold text-cyan-300">🗺️ Редактор стратегической карты</h3>
         <div className="flex gap-2">
-          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">📁 Загрузить</button>
+          <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm">📁 Загрузить карту</button>
           <button onClick={handleSave} className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-sm">💾 Сохранить</button>
           <button onClick={handleExport} disabled={mapTiles.length === 0} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-slate-600 disabled:cursor-not-allowed rounded text-sm">📤 Экспорт</button>
           <button onClick={() => importInputRef.current?.click()} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded text-sm">📥 Импорт</button>
           <button onClick={handleClear} className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm">🗑️ Очистить</button>
         </div>
       </div>
+      
       <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileSelect} className="hidden" />
       <input ref={importInputRef} type="file" accept="application/json" onChange={handleImport} className="hidden" />
       <input ref={hexSampleInputRef} type="file" accept="image/*" onChange={handleHexSampleUpload} className="hidden" />
+      {/* 👈 Скрытый инпут для иконок */}
+      <input ref={iconInputRef} type="file" accept="image/*" onChange={handleIconUpload} className="hidden" />
+
+      {/* 👈 НОВАЯ ПАНЕЛЬ: Менеджер иконок */}
+      <div className="mb-4 p-3 bg-slate-900/50 rounded border border-slate-700">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-cyan-300">🖼️ Менеджер иконок (Города, Базы, Корабли)</h4>
+          <button onClick={() => iconInputRef.current?.click()} className="px-3 py-1 bg-teal-600 hover:bg-teal-700 rounded text-xs">📁 Загрузить иконку</button>
+        </div>
+        
+        {mapIcons.length === 0 ? (
+          <div className="text-xs text-slate-500">⚠️ Иконки не загружены</div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            {mapIcons.map(icon => (
+              <div key={icon.id} className="flex flex-col items-center bg-slate-800 p-2 rounded border border-slate-600 relative">
+                <img src={icon.imageData} alt={icon.name} className="w-12 h-12 object-contain mb-1" />
+                <span className="text-[10px] text-slate-300 truncate w-full text-center">{icon.name}</span>
+                <button 
+                  onClick={() => handleDeleteIcon(icon.id)}
+                  className="absolute top-1 right-1 text-red-400 hover:text-red-300 text-xs font-bold"
+                  title="Удалить иконку"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="mb-4 p-3 bg-slate-900/50 rounded border border-slate-700">
         <div className="flex items-center justify-between mb-2">
@@ -239,7 +322,6 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
                 onChange={(e) => {
                   const newOpacity = parseInt(e.target.value) / 100;
                   setHexGridOpacity(newOpacity);
-                  // Автосохранение
                   const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
                   const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity: newOpacity };
                   saveToIndexedDB(dataToSave).catch(err => console.error('❌', err));
@@ -250,27 +332,6 @@ export default function StrategicMapEditor({ strategicMapData, onUpdate }: Strat
                 }}
               />
               <span className="text-xs text-cyan-300 font-semibold w-12 text-right">{Math.round(hexGridOpacity * 100)}%</span>
-            </div>
-            <div className="flex gap-2">
-              {[0, 10, 20, 30, 50, 70, 100].map((percent) => (
-                <button
-                  key={percent}
-                  onClick={() => {
-                    const newOpacity = percent / 100;
-                    setHexGridOpacity(newOpacity);
-                    const tilesWithSizes = mapTiles.map(tile => ({ ...tile, width: getTileSize(tile.id).width, height: getTileSize(tile.id).height }));
-                    const dataToSave: StrategicMapData = { tiles: tilesWithSizes, mapWidth, mapHeight, tileWidth, tileHeight, hexSample, hexGridOpacity: newOpacity };
-                    saveToIndexedDB(dataToSave).catch(err => console.error('❌', err));
-                  }}
-                  className={`px-2 py-1 rounded text-[10px] transition-colors ${
-                    Math.round(hexGridOpacity * 100) === percent
-                      ? 'bg-cyan-600 text-white'
-                      : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
-                  }`}
-                >
-                  {percent}%
-                </button>
-              ))}
             </div>
           </div>
         ) : (

@@ -1,8 +1,10 @@
 import { StrategicMapData } from '../types/shipDatabase';
 
 const DB_NAME = 'NavalBattleDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'mapData';
+// 🪄 Поднимаем версию до 2, чтобы создать хранилище для гексов
+const DB_VERSION = 2; 
+const STORE_NAME_MAP = 'mapData';
+const STORE_NAME_HEX = 'hexGrid';
 
 /**
  * Открытие IndexedDB
@@ -22,22 +24,27 @@ export function openDB(): Promise<IDBDatabase> {
     request.onupgradeneeded = (event) => {
       const db = (event.target as IDBOpenDBRequest).result;
       
-      // Создание хранилища для данных карты
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      // Создание хранилища для данных карты (если его еще нет)
+      if (!db.objectStoreNames.contains(STORE_NAME_MAP)) {
+        db.createObjectStore(STORE_NAME_MAP, { keyPath: 'id' });
+      }
+
+      // Создание хранилища для гексов (если его еще нет)
+      if (!db.objectStoreNames.contains(STORE_NAME_HEX)) {
+        db.createObjectStore(STORE_NAME_HEX);
       }
     };
   });
 }
 
 /**
- * Сохранение данных карты в IndexedDB
+ * Сохранение данных карты (42 тайла) в IndexedDB
  */
 export async function saveToIndexedDB(data: StrategicMapData): Promise<void> {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction([STORE_NAME_MAP], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME_MAP);
     
     // Сохраняем данные с ключом 'strategicMap'
     const record = {
@@ -50,12 +57,12 @@ export async function saveToIndexedDB(data: StrategicMapData): Promise<void> {
       const request = store.put(record);
       
       request.onsuccess = () => {
-        console.log(`✅ Данные сохранены в IndexedDB (${data.tiles.length} тайлов)`);
+        console.log(`✅ Данные карты сохранены в IndexedDB (${data.tiles.length} тайлов)`);
         resolve();
       };
       
       request.onerror = () => {
-        reject(new Error('Ошибка сохранения в IndexedDB'));
+        reject(new Error('Ошибка сохранения карты в IndexedDB'));
       };
     });
     
@@ -67,20 +74,20 @@ export async function saveToIndexedDB(data: StrategicMapData): Promise<void> {
 }
 
 /**
- * Загрузка данных карты из IndexedDB
+ * Загрузка данных карты (42 тайла) из IndexedDB
  */
 export async function loadFromIndexedDB(): Promise<StrategicMapData | undefined> {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction([STORE_NAME_MAP], 'readonly');
+    const store = transaction.objectStore(STORE_NAME_MAP);
     
     return new Promise<StrategicMapData | undefined>((resolve, reject) => {
       const request = store.get('strategicMap');
       
       request.onsuccess = () => {
         if (request.result) {
-          console.log(`✅ Загружено из IndexedDB: ${request.result.tiles?.length || 0} тайлов`);
+          console.log(`✅ Карта загружена из IndexedDB: ${request.result.tiles?.length || 0} тайлов`);
           resolve(request.result);
         } else {
           resolve(undefined);
@@ -88,7 +95,7 @@ export async function loadFromIndexedDB(): Promise<StrategicMapData | undefined>
       };
       
       request.onerror = () => {
-        reject(new Error('Ошибка загрузки из IndexedDB'));
+        reject(new Error('Ошибка загрузки карты из IndexedDB'));
       };
     });
   } catch (error) {
@@ -103,14 +110,14 @@ export async function loadFromIndexedDB(): Promise<StrategicMapData | undefined>
 export async function deleteFromIndexedDB(): Promise<void> {
   try {
     const db = await openDB();
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
+    const transaction = db.transaction([STORE_NAME_MAP], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME_MAP);
     
     await new Promise<void>((resolve, reject) => {
       const request = store.delete('strategicMap');
       
       request.onsuccess = () => {
-        console.log('✅ Данные удалены из IndexedDB');
+        console.log('✅ Данные карты удалены из IndexedDB');
         resolve();
       };
       
@@ -127,26 +134,7 @@ export async function deleteFromIndexedDB(): Promise<void> {
 }
 
 /**
- * Получение информации о хранилище
- */
-export async function getStorageInfo(): Promise<{ used: number; quota: number } | null> {
-  try {
-    if ('storage' in navigator && 'estimate' in navigator.storage) {
-      const estimate = await navigator.storage.estimate();
-      return {
-        used: estimate.usage || 0,
-        quota: estimate.quota || 0
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('❌ Ошибка получения информации о хранилище:', error);
-    return null;
-  }
-}
-
-/**
- * Миграция данных из localStorage в IndexedDB
+ * Миграция старых данных из localStorage в IndexedDB
  */
 export async function migrateFromLocalStorage(): Promise<boolean> {
   try {
@@ -158,9 +146,8 @@ export async function migrateFromLocalStorage(): Promise<boolean> {
     const data = JSON.parse(saved) as StrategicMapData;
     await saveToIndexedDB(data);
     
-    // Удаляем из localStorage после успешной миграции
     localStorage.removeItem('strategicMapData');
-    console.log('✅ Данные мигрированы из localStorage в IndexedDB');
+    console.log('✅ Данные карты мигрированы из localStorage в IndexedDB');
     
     return true;
   } catch (error) {

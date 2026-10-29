@@ -3,3 +3,8 @@ node_modules/
 dist/
 build/
 *.log
+
+# Локальная база данных SQLite
+server/game.db
+server/game.db-shm
+server/game.db-wal
